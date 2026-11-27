@@ -7,10 +7,12 @@ import { heureRetour, valeursDelai } from './pages/delai.js';
 const OR = [217, 84, 30], NOIR = [17, 17, 17], GRIS = [107, 105, 101], LIGNE = [220, 211, 195], FOND = [243, 238, 227];
 const nomP = p => p ? (p.nom_usuel || p.nom) : '';
 
+// Logo choisi dans Réglages, sinon le logo fourni avec l'appli
+const logoEntreprise = async (e, max) => (e.logo_chemin && await image('entreprise', e.logo_chemin, max, false)) || image(null, new URL('../icons/icon-512.png', import.meta.url).href, max, false);
 async function image(bucket, chemin, max = 1400, jpeg = true) {
   if (!chemin) return null;
   try {
-    const url = await urlFichier(bucket, chemin);
+    const url = bucket ? await urlFichier(bucket, chemin) : chemin;
     if (!url) return null;
     const blob = await (await fetch(url)).blob();
     const bmp = await createImageBitmap(blob);
@@ -73,7 +75,7 @@ function doc(orient = 'p') {
 
 async function entete(o, titre, sousTitre) {
   const { pdf, M, W } = o, e = moi.entreprise || {};
-  const logo = await image('entreprise', e.logo_chemin, 600, false);
+  const logo = await logoEntreprise(e, 600);
   if (logo) { const h = Math.min(20, 50 * logo.h / logo.w); pdf.addImage(logo.data, logo.fmt, M, M, h * logo.w / logo.h, h); }
   else { o.txt('NUISIBLE', M, M, { size: 20, bold: true, color: OR }); o.txt('EXPRESS 34', M, M + 8, { size: 15, bold: true }); }
   const infos = [e.nom, adresseDe(e), [e.telephone, e.email].filter(Boolean).join(' · '), e.siret && 'SIRET ' + e.siret, e.numero_certibiocide && 'Certibiocide N° ' + e.numero_certibiocide].filter(Boolean);
@@ -231,7 +233,7 @@ export async function pdfDelai(d, p) {
   await chargerJsPDF();
   const v = valeursDelai(d, p);
   const o = doc('l'), { pdf, W, H } = o, e = moi.entreprise || {};
-  const [sc, st, logo] = await Promise.all([image('signatures', v.signature_client_chemin, 500, false), image('signatures', v.signature_tech_chemin, 500, false), image('entreprise', e.logo_chemin, 400, false)]);
+  const [sc, st, logo] = await Promise.all([image('signatures', v.signature_client_chemin, 500, false), image('signatures', v.signature_tech_chemin, 500, false), logoEntreprise(e, 400)]);
   const urg = ref.modeles.delai_rentree_urgence?.contenu || 'Urgence : SAMU 15 - Centre antipoison (Marseille) 04 91 75 25 25 - Produits : FDS disponibles sur demande';
   const eng = ref.modeles.delai_rentree_engagement?.contenu || '';
   const cw = (W - 3 * 8) / 2;

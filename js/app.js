@@ -32,7 +32,7 @@ function Logo({ petit }) {
   const [url, setUrl] = useState(null);
   useEffect(() => { if (moi.entreprise?.logo_chemin) urlFichier('entreprise', moi.entreprise.logo_chemin).then(setUrl); }, [moi.entreprise?.logo_chemin]);
   if (url) return html`<a class="brand" href="#/accueil"><img src=${url} alt="Nuisible Express 34" /></a>`;
-  return html`<a class="brand" href="#/accueil"><b>NUISIBLE</b><span>EXPRESS 34</span>${!petit && html`<small>Gestion des interventions</small>`}</a>`;
+  return html`<a class="brand avec-logo" href="#/accueil"><img class="rond" src="icons/logo-160.png" alt="" /><div><b>NUISIBLE</b><span>EXPRESS 34</span>${!petit && html`<small>Gestion des interventions</small>`}</div></a>`;
 }
 
 function Coquille({ route, children }) {

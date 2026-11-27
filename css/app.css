@@ -28,6 +28,8 @@ img{max-width:100%}
 .brand span{display:block;color:var(--side-fg);font-size:1.32rem}
 .brand small{display:block;font-family:var(--f-body);font-weight:600;font-size:.62rem;letter-spacing:.14em;color:var(--side-muted);margin-top:8px;text-transform:uppercase}
 .brand img{max-height:64px;max-width:180px;display:block}
+.brand.avec-logo{display:flex;align-items:center;gap:10px}.brand img.rond{width:52px;height:52px;flex:none}
+.login .brand img.rond{width:88px;height:88px}.topm .brand img.rond{width:34px;height:34px}.topm .brand.avec-logo{gap:7px}
 .nav{display:flex;flex-direction:column;gap:2px}
 .nav a{display:flex;align-items:center;gap:12px;color:var(--side-fg);padding:10px 12px;border-radius:var(--r-pill);font-weight:500;text-decoration:none;opacity:.82}
 .nav a:hover{opacity:1;background:#ffffff12}
