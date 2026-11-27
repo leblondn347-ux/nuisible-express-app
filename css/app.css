@@ -355,3 +355,4 @@ select.inp{appearance:auto}
   .morepop svg{width:18px;height:18px;flex:none}
 }
 @media print{.side,.topm,.bnav,.tabs{display:none!important}.shell{display:block}}
+.offline.demo{background:var(--orange-soft);color:var(--ink)}

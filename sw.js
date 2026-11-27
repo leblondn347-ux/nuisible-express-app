@@ -1,5 +1,5 @@
 // Service worker : l'appli s'ouvre même sans réseau
-const VERSION = 'ne34-v1.0.1';
+const VERSION = 'ne34-v1.0.2';
 const FICHIERS = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/config.js', 'js/db.js', 'js/ui.js', 'js/util.js', 'js/data.js', 'js/pdf.js',

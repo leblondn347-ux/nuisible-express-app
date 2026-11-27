@@ -58,6 +58,7 @@ function Coquille({ route, children }) {
         ${top ? html`<${Logo} petit />` : html`<button class="back" onClick=${() => history.length > 1 ? history.back() : aller(cur)} aria-label="Retour"><${Icon} n="back" sw="2.2" /></button>`}
         <a class="avatar" href="#/reglages" style="text-decoration:none">${(nom[0] || '?').toUpperCase()}</a>
       </header>
+      ${moi.entreprise?.demo_de && html`<div class="offline demo">Espace de démonstration : les clients sont fictifs, tu peux tout essayer.</div>`}
       ${(!enLigne || file > 0) && html`<div class="offline">${!enLigne ? 'Hors connexion : tes saisies sont gardées sur l’appareil. ' : ''}${file > 0 ? `${file} modification(s) en attente d’envoi.` : ''}
         ${enLigne && file > 0 && html` <button class="link" onClick=${vider}>Envoyer maintenant</button>`}</div>`}
       <div class="view">${children}</div>
@@ -74,10 +75,24 @@ function Coquille({ route, children }) {
 }
 
 function SansAcces() {
-  return html`<div class="login"><div class="box card">
+  const [code, setCode] = useState('');
+  const [msg, setMsg] = useState(null);
+  const [att, setAtt] = useState(false);
+  const go = async e => {
+    e.preventDefault(); setMsg(null); setAtt(true);
+    const { data, error } = await sb.rpc('utiliser_code', { p_code: code.trim() });
+    setAtt(false);
+    if (error) return setMsg(error.message);
+    if (data !== 'ok') return setMsg(data);
+    location.hash = '#/accueil'; location.reload();
+  };
+  return html`<div class="login"><form class="box card stack" onSubmit=${go}>
     <h2 class="ptitle" style="font-size:1.6rem">Compte <em>sans accès</em></h2>
-    <p>Ton compte existe, mais il n'est relié à aucune entreprise. Demande à l'administrateur de t'inviter avec cette adresse e-mail : <b>${moi.session?.user?.email}</b>.</p>
-    <button class="btn" onClick=${() => sb.auth.signOut()}>Se déconnecter</button></div></div>`;
+    <p style="margin:0">Ton compte <b>${moi.session?.user?.email}</b> n'a pas d'accès pour le moment (pas encore de code, ou accès bloqué par l'administrateur).</p>
+    <label><span class="fl">Code d'accès</span><input class="inp" required autocapitalize="characters" autocomplete="off" placeholder="ex. AB7K-2QXM" value=${code} onInput=${e => setCode(e.target.value.toUpperCase())} /></label>
+    ${msg && html`<div class="err">${msg}</div>`}
+    <button class="btn pri block" disabled=${att}>${att ? 'Un instant…' : 'Valider le code'}</button>
+    <button type="button" class="link" onClick=${() => sb.auth.signOut()}>Se déconnecter</button></form></div>`;
 }
 
 function App() {
