@@ -146,7 +146,12 @@ export function FicheClient({ id }) {
   const modif = async () => { if (await ouvrir(FormClient, { client: c })) recharger(); };
   const nouveauSite = async s => { if (await ouvrir(FormSite, { site: s, client: c })) recharger(); };
   const nouveauRatt = async () => { const r = await ouvrir(FormClient, { donneur_ordre_id: c.id }); if (r) recharger(); };
-  const suppr = async () => { if (await confirmer(`Supprimer le client « ${c.nom_affiche} » ? Il disparaîtra des listes mais son historique reste en base.`, { danger: true, oui: 'Supprimer' })) { await corbeille('clients', c.id).catch(erreur); aller('clients'); } };
+  const suppr = async () => { if (await confirmer(`Supprimer le client « ${c.nom_affiche} » ? Ses interventions disparaîtront aussi du planning.`, { danger: true, oui: 'Supprimer' })) {
+    try {
+      const t = new Date().toISOString(), ids = dossiers.filter(x => x.client_id === c.id).map(x => x.id);
+      if (ids.length) { await run(sb.from('passages').update({ supprime_le: t }).in('dossier_id', ids)); await run(sb.from('dossiers').update({ supprime_le: t }).in('id', ids)); }
+      await run(sb.from('clients').update({ supprime_le: t }).eq('id', c.id)); aller('clients');
+    } catch (e) { erreur(e); } } };
   const vcard = () => telecharger(new Blob([`BEGIN:VCARD\r\nVERSION:3.0\r\nFN:${c.nom_affiche}\r\n${c.prenom || c.nom ? `N:${c.nom || ''};${c.prenom || ''};;;\r\n` : ''}${pro ? `ORG:${c.raison_sociale}\r\n` : ''}${c.telephone ? `TEL;TYPE=CELL:${c.telephone}\r\n` : ''}${c.email ? `EMAIL:${c.email}\r\n` : ''}${c.adresse ? `ADR;TYPE=WORK:;;${c.adresse};${c.ville || ''};;${c.code_postal || ''};France\r\n` : ''}NOTE:Client Nuisible Express 34\r\nEND:VCARD\r\n`], { type: 'text/vcard' }), (c.nom_affiche || 'contact') + '.vcf');
   return html`
     <div class="head"><div><div class="eyebrow">${pro ? (SOUS_TYPES[c.sous_type] || 'Professionnel') : 'Particulier'}${donneur ? html` · rattaché à <a href=${'#/client/' + donneur.id}>${donneur.nom_affiche}</a>` : ''}</div>
