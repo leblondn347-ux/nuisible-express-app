@@ -81,3 +81,19 @@ export async function aVenir(jours = 60) {
   const d = new Date(); d.setHours(0, 0, 0, 0);
   return passagesPeriode(addDays(d, 1), addDays(d, jours + 1));
 }
+
+// Rendez-vous perso de l'agenda Google (créneaux occupés, en gris dans le planning)
+const persoCache = {};
+export async function rdvPerso(debut, fin) {
+  const k = dayKey(debut) + '|' + dayKey(fin);
+  if (persoCache[k] && Date.now() - persoCache[k].t < 5 * 60e3) return persoCache[k].v;
+  try {
+    const { data, error } = await sb.functions.invoke('agenda', { body: { debut: new Date(debut).toISOString(), fin: new Date(fin).toISOString() } });
+    if (error) throw error;
+    const v = (data?.evenements || []).map(e => ({ ...e, perso: true }));
+    persoCache[k] = { t: Date.now(), v }; return v;
+  } catch (e) { return []; }
+}
+export const viderPerso = () => Object.keys(persoCache).forEach(k => delete persoCache[k]);
+// Un rendez-vous perso touche-t-il ce jour ?
+export const persoDuJour = (l, k) => (l || []).filter(e => e.jour ? (e.debut.slice(0, 10) <= k && k < e.fin.slice(0, 10)) : dayKey(e.debut) === k);

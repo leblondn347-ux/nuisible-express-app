@@ -3,7 +3,8 @@ import { html, useState, useEffect, Icon, Titre, Chargement, Vide, useCharge, Mo
 import { sb, run, moi, ref, estAdmin, chargerRef, envoyerFichier, cheminEntreprise, modifier, urlFichier } from '../db.js';
 import { Signature } from './signature.js';
 import { fmtDate, dayKey, addDays, telecharger, csv, today, SOUS_TYPES } from '../util.js';
-import { VERSION } from '../config.js';
+import { VERSION, SUPABASE_URL } from '../config.js';
+import { rdvPerso, viderPerso } from '../data.js';
 import { pdfRegistre } from '../pdf.js';
 
 let invite = null;
@@ -44,7 +45,55 @@ function Profil() {
       <div class="row"><button class="btn pri" onClick=${go}>Enregistrer</button><button class="btn ghost" onClick=${mdp}>Changer mon mot de passe</button>
         <button class="btn danger" onClick=${() => sb.auth.signOut()}><${Icon} n="out" />Se déconnecter</button></div></div>
     <div class="card stack"><h3>Ma signature</h3><p class="small muted" style="margin:0">Elle est ajoutée toute seule sur tes rapports.</p>
-      <${Signature} chemin=${moi.profil?.signature_chemin} onSigne=${signe} /></div></div>`;
+      <${Signature} chemin=${moi.profil?.signature_chemin} onSigne=${signe} /></div>
+    <${AgendaGoogle} /></div>`;
+}
+
+// Liaison avec Google Agenda : abonnement aux interventions + rendez-vous perso dans le planning
+function AgendaGoogle() {
+  const [a, recharger] = useCharge(async () => {
+    const l = await run(sb.from('agendas').select('*').eq('profil_id', moi.profil.id));
+    return l[0] || await run(sb.from('agendas').insert({ profil_id: moi.profil.id }).select().single());
+  });
+  const [ics, setIcs] = useState(null);
+  const [test, setTest] = useState(null);
+  if (!a) return html`<div class="card"><${Chargement} /></div>`;
+  const lien = `${SUPABASE_URL}/functions/v1/agenda?t=${a.jeton}`;
+  const copier = async t => { try { await navigator.clipboard.writeText(t); toast('Lien copié'); } catch (e) { toast(t); } };
+  const valeur = ics ?? a.google_ics ?? '';
+  const enregistrer = async () => {
+    const v = valeur.trim();
+    if (v && !/^(https|webcal):\/\/calendar\.google\.com\/calendar\/ical\//.test(v)) return toast("Ce n'est pas une adresse secrète Google Agenda (elle commence par https://calendar.google.com/calendar/ical/).", true);
+    try {
+      await run(sb.from('agendas').update({ google_ics: v || null, modifie_le: new Date().toISOString() }).eq('profil_id', moi.profil.id));
+      viderPerso(); setTest(null); toast(v ? 'Agenda Google relié' : 'Agenda Google retiré'); recharger();
+      if (v) { const l = await rdvPerso(new Date(), addDays(new Date(), 30)); setTest(l.length); }
+    } catch (e) { erreur(e); }
+  };
+  return html`<div class="card stack" style="grid-column:1/-1"><h3>Google Agenda</h3>
+    <div class="grid2e" style="gap:18px">
+      <div class="stack" style="gap:10px"><b>1 · Mes interventions dans Google Agenda</b>
+        <p class="small muted" style="margin:0">Tes interventions apparaissent toutes seules dans ton Google Agenda, dans un agenda à part « Interventions Nuisible Express 34 ». Ce lien est personnel : ne le partage pas.</p>
+        <div class="row"><input class="inp" style="flex:1;font-size:.8rem" readonly value=${lien} onFocus=${e => e.target.select()} /><button class="btn sm pri" onClick=${() => copier(lien)}>Copier</button></div>
+        <ol class="small" style="margin:0;padding-left:18px;line-height:1.6">
+          <li>Sur l'ordinateur, ouvre <a href="https://calendar.google.com/calendar/u/0/r/settings/addbyurl" target="_blank">Google Agenda › Ajouter à partir de l'URL</a>.</li>
+          <li>Colle le lien et clique sur <b>Ajouter un agenda</b>.</li>
+          <li>Dans la liste à gauche, choisis la couleur <b>Tomate</b> pour cet agenda.</li></ol>
+        <p class="small muted" style="margin:0">Google met à jour cet agenda toutes les quelques heures. Pour une intervention urgente, utilise le bouton « Google Agenda » sur sa fiche.</p>
+      </div>
+      <div class="stack" style="gap:10px"><b>2 · Mes rendez-vous perso dans le planning</b>
+        <p class="small muted" style="margin:0">Tes rendez-vous Google s'affichent en gris dans ton planning, pour éviter de te mettre une intervention au même moment. Toi seul les vois.</p>
+        <ol class="small" style="margin:0;padding-left:18px;line-height:1.6">
+          <li>Sur l'ordinateur, ouvre <a href="https://calendar.google.com/calendar/u/0/r/settings" target="_blank">les paramètres de Google Agenda</a>.</li>
+          <li>À gauche, clique sur ton agenda perso, puis sur <b>Intégrer l'agenda</b>.</li>
+          <li>Copie <b>Adresse secrète au format iCal</b> et colle-la ici.</li></ol>
+        <input class="inp" placeholder="https://calendar.google.com/calendar/ical/…/basic.ics" value=${valeur} onInput=${e => setIcs(e.target.value)} />
+        <div class="row"><button class="btn sm pri" onClick=${enregistrer}>${a.google_ics ? 'Mettre à jour' : 'Relier mon agenda'}</button>
+          ${a.google_ics && html`<button class="btn sm ghost" onClick=${() => { setIcs(''); }}>Retirer</button>`}
+          ${a.google_ics && html`<span class="pill ok">relié</span>`}</div>
+        ${a.google_ics && html`<a class="btn sm ghost" style="align-self:flex-start" href="#/import-agenda">Recréer mes interventions depuis l'agenda</a>`}
+        ${test != null && html`<div class=${test ? 'okbox' : 'infobox small'}>${test ? `${test} rendez-vous perso trouvés sur les 30 prochains jours.` : "Aucun rendez-vous trouvé sur 30 jours : vérifie l'adresse copiée."}</div>`}
+      </div></div></div>`;
 }
 
 function Entreprise() {
