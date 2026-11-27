@@ -70,3 +70,14 @@ export async function creerIntervention({ client_id, site_id, prestation_code, n
 }
 
 export const lendemain = () => [addDays(new Date(), 1), addDays(new Date(), 2)].map(d => { d.setHours(0, 0, 0, 0); return d; });
+
+// Filtre « qui » du planning (administrateur seulement) : 'tous', 'moi' ou l'id d'un technicien
+export const lireFiltreTech = () => { try { return localStorage.getItem('ne34-tech') || 'tous'; } catch (e) { return 'tous'; } };
+export const ecrireFiltreTech = v => { try { localStorage.setItem('ne34-tech', v); } catch (e) { } };
+export const filtrerTech = (l, f) => !f || f === 'tous' ? l : l.filter(p => p.technicien_id === (f === 'moi' ? moi.profil?.id : f));
+
+// Prochaines interventions (accueil)
+export async function aVenir(jours = 60) {
+  const d = new Date(); d.setHours(0, 0, 0, 0);
+  return passagesPeriode(addDays(d, 1), addDays(d, jours + 1));
+}

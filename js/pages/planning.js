@@ -1,7 +1,7 @@
 // Planning : semaine (ordinateur), jour par jour (téléphone), passages à planifier
 import { html, useState, Icon, Titre, Statut, Chargement, Vide, useCharge, Modal, ouvrir, Texte, erreur, toast, aller } from '../ui.js';
-import { sb, run, ref, modifier } from '../db.js';
-import { passagesPeriode, aPlanifier, materiel } from '../data.js';
+import { sb, run, ref, moi, modifier, estAdmin, nomTech } from '../db.js';
+import { passagesPeriode, aPlanifier, materiel, lireFiltreTech, ecrireFiltreTech, filtrerTech } from '../data.js';
 import { fmtTime, fmtDate, addDays, startOfWeek, dayKey, JOURS, MOIS, today, isoFrom, timeKey, cls, mapsHref } from '../util.js';
 
 const H0 = 7, H1 = 20, HH = 48;
@@ -10,9 +10,11 @@ export function Planning({ q }) {
   const [debut, setDebut] = useState(startOfWeek(q.d || new Date()));
   const [jourSel, setJourSel] = useState(q.d || today());
   const [vue, setVue] = useState(q.vue || 'semaine');
+  const [qui, setQui] = useState(lireFiltreTech());
   const fin = addDays(debut, 7);
-  const [evs, recharger] = useCharge(() => passagesPeriode(debut, fin), [debut.getTime()]);
-  const [aplan, rechargerAP] = useCharge(() => aPlanifier(), []);
+  const [evsT, recharger] = useCharge(() => passagesPeriode(debut, fin), [debut.getTime()]);
+  const [aplanT, rechargerAP] = useCharge(() => aPlanifier(), []);
+  const evs = evsT && filtrerTech(evsT, qui), aplan = aplanT && filtrerTech(aplanT, qui);
 
   const jours = [...Array(7)].map((_, i) => addDays(debut, i));
   const avecDim = (evs || []).some(e => new Date(e.debut_prevu).getDay() === 0);
@@ -34,10 +36,12 @@ export function Planning({ q }) {
   return html`
     <${Titre} sur="Planning" em=${vue === 'aplanifier' ? 'à planifier' : ''} actions=${html`
       <div class="chips"><button aria-pressed=${vue === 'semaine'} onClick=${() => setVue('semaine')}>Semaine</button>
+        <button aria-pressed=${vue === 'mois'} onClick=${() => setVue('mois')}>Mois</button>
         <button aria-pressed=${vue === 'aplanifier'} onClick=${() => setVue('aplanifier')}>À planifier${aplan?.length ? ` (${aplan.length})` : ''}</button></div>
-      <a class="btn pri hide-m" href="#/nouvelle"><${Icon} n="plus" />Nouvelle intervention</a>`}>${vue === 'aplanifier' ? 'Passages' : 'Ma semaine'}<//>
+      <a class="btn pri hide-m" href="#/nouvelle"><${Icon} n="plus" />Nouvelle intervention</a>`}>${vue === 'aplanifier' ? 'Passages' : vue === 'mois' ? 'Mon mois' : 'Ma semaine'}<//>
+    <${FiltreTech} valeur=${qui} onChange=${setQui} />
 
-    ${vue === 'aplanifier' ? html`<div class="card">
+    ${vue === 'mois' ? html`<${VueMois} qui=${qui} jour0=${jourSel} />` : vue === 'aplanifier' ? html`<div class="card">
       ${!aplan ? html`<${Chargement} />` : aplan.length === 0 ? html`<${Vide}>Tout est planifié. 👍<//>` :
         html`<div class="tblwrap"><table class="tbl resp"><thead><tr><th>Date visée</th><th>Client</th><th class="hm">Prestation</th><th></th></tr></thead><tbody>
         ${aplan.map(p => html`<tr>
@@ -105,4 +109,54 @@ export function FenetrePlanifier({ p, fermer }) {
       <${Texte} label="Heure" type="time" value=${heure} onInput=${setHeure} />
       <${Texte} label="Durée prévue (minutes)" type="number" min="15" step="15" value=${duree} onInput=${v => setDuree(+v || 60)} />
     </div><//>`;
+}
+
+// Filtre par personne (administrateur, s'il y a plusieurs comptes)
+export function FiltreTech({ valeur, onChange }) {
+  const pf = ref.profils.filter(p => p.actif !== false);
+  if (!estAdmin() || pf.length < 2) return null;
+  const opts = [['tous', 'Tout le monde'], ['moi', 'Moi'], ...pf.filter(p => p.id !== moi.profil?.id).map(p => [p.id, nomTech(p.id)])];
+  return html`<div class="chips" style="margin:-4px 0 14px">${opts.map(([v, l]) => html`<button aria-pressed=${valeur === v} onClick=${() => { ecrireFiltreTech(v); onChange(v); }}>${l}</button>`)}</div>`;
+}
+
+// Carte d'un rendez-vous (liste du jour)
+const CarteRdv = ({ e }) => html`<a class="card rdv" style=${`border-left:4px solid ${e.couleur};grid-template-columns:56px 1fr`} href=${'#/intervention/' + e.passage_id}>
+  <div class="h">${fmtTime(e.debut_prevu)}</div>
+  <div><div class="pres" style=${`color:${e.couleur}`}>${e.prestation}</div><div class="who">${e.client}</div>
+    <div class="where">${[e.adresse, e.ville].filter(Boolean).join(', ')}</div>
+    ${materiel(e).length > 0 && html`<div class="small" style="color:var(--orange-deep);margin-top:4px"><${Icon} n="box" /> ${materiel(e).join(' · ')}</div>`}
+    <div style="margin-top:6px"><${Statut} s=${e.statut} />${estAdmin() && ref.profils.length > 1 && e.technicien_id ? html` <span class="small muted">${nomTech(e.technicien_id)}</span>` : ''}</div></div></a>`;
+
+// Vue du mois entier : une pastille par intervention, touche un jour pour voir la liste
+function VueMois({ qui, jour0 }) {
+  const [mois, setMois] = useState(() => { const d = new Date(jour0 || new Date()); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  const [sel, setSel] = useState(jour0 || today());
+  const deb = startOfWeek(mois), finM = new Date(mois.getFullYear(), mois.getMonth() + 1, 1);
+  const nbSem = Math.ceil((addDays(finM, -1) - deb) / 864e5 / 7 + 0.01);
+  const [evsT] = useCharge(() => passagesPeriode(deb, addDays(deb, nbSem * 7)), [deb.getTime()]);
+  const evs = evsT && filtrerTech(evsT, qui);
+  const parJour = k => (evs || []).filter(e => dayKey(e.debut_prevu) === k);
+  const aller2 = n => { const m = new Date(mois.getFullYear(), mois.getMonth() + n, 1); setMois(m); setSel(dayKey(m.getMonth() === new Date().getMonth() && m.getFullYear() === new Date().getFullYear() ? new Date() : m)); };
+  const jours = [...Array(nbSem * 7)].map((_, i) => addDays(deb, i));
+  const duMois = (evs || []).filter(e => new Date(e.debut_prevu).getMonth() === mois.getMonth());
+  return html`
+    <div class="row between" style="margin-bottom:12px">
+      <div class="row"><button class="iconbtn" onClick=${() => aller2(-1)} aria-label="Mois précédent"><${Icon} n="back" /></button>
+        <button class="btn sm ghost" onClick=${() => { const t = new Date(); setMois(new Date(t.getFullYear(), t.getMonth(), 1)); setSel(today()); }}>Ce mois-ci</button>
+        <button class="iconbtn" onClick=${() => aller2(1)} aria-label="Mois suivant"><${Icon} n="next" /></button>
+        <b>${MOIS[mois.getMonth()]} ${mois.getFullYear()}</b></div>
+      ${evs && html`<span class="pill or">${duMois.length} intervention(s)</span>`}
+    </div>
+    ${!evs ? html`<${Chargement} />` : html`
+    <div class="mois card">
+      ${['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(j => html`<div class="mh">${j}</div>`)}
+      ${jours.map(d => { const k = dayKey(d), l = parJour(k); return html`<button class=${cls('mj', d.getMonth() !== mois.getMonth() && 'hors', k === today() && 'auj', k === sel && 'sel')} onClick=${() => setSel(k)} onDblClick=${() => aller('nouvelle?jour=' + k)}>
+        <b>${d.getDate()}</b>
+        <span class="dots">${l.slice(0, 4).map(e => html`<i style=${`background:${e.couleur}`}></i>`)}${l.length > 4 ? html`<em>+${l.length - 4}</em>` : ''}</span>
+        <span class="lbl">${l.slice(0, 3).map(e => html`<span style=${`--c:${e.couleur}`}>${fmtTime(e.debut_prevu)} ${e.client}</span>`)}${l.length > 3 ? html`<span>+${l.length - 3} autre(s)</span>` : ''}</span>
+      </button>`; })}
+    </div>
+    <h3 style="margin:18px 0 10px">${fmtDate(sel)}</h3>
+    <div class="stack">${parJour(sel).length === 0 ? html`<div class="card"><${Vide}>Rien de prévu ce jour-là.<//></div>` : parJour(sel).map(e => html`<${CarteRdv} e=${e} />`)}
+      <a class="btn pri" href=${'#/nouvelle?jour=' + sel}><${Icon} n="plus" />Ajouter ce jour-là</a></div>`}`;
 }

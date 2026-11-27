@@ -1,6 +1,6 @@
 // Nouvelle intervention (ou intervention en direct, sur place)
 import { html, useState, useEffect, Icon, Titre, Chargement, Texte, Choix, TexteListe, Champ, Pastilles, Bascule, erreur, toast, aller, useRefData } from '../ui.js';
-import { sb, run, moi, ref, liste, prestation } from '../db.js';
+import { sb, run, moi, ref, liste, prestation, estAdmin, nomTech } from '../db.js';
 import { creerIntervention, adresseDe } from '../data.js';
 import { ChampsClient } from './clients.js';
 import { matches, today, position, adresseDepuisPosition, chercherAdresse, debounce, SOUS_TYPES, cls } from '../util.js';
@@ -103,7 +103,7 @@ export function NouvelleIntervention({ q }) {
         if (c.adresse) sid = (await run(sb.from('sites').insert({ client_id: c.id, nom: 'Adresse principale', adresse: c.adresse, complement_adresse: c.complement_adresse, code_postal: c.code_postal, ville: c.ville, latitude: c.latitude, longitude: c.longitude, principal: true }).select().single())).id;
       }
       const { passage } = await creerIntervention({ client_id: cid, site_id: sid, prestation_code: f.prestation_code, nuisibles: f.nuisibles, titre: f.titre, ordre_service: f.ordre_service, devis_abby: f.devis_abby,
-        jour: f.jour, heure: f.heure, duree: f.duree, nature: f.nature, produits_prevus: f.produits, materiel_a_prevoir: f.materiel, delai_rentree_requis: f.delai, enDirect: direct, details: f.details, position: geo?.p });
+        jour: f.jour, heure: f.heure, duree: f.duree, nature: f.nature, produits_prevus: f.produits, materiel_a_prevoir: f.materiel, delai_rentree_requis: f.delai, technicien_id: f.technicien_id || null, enDirect: direct, details: f.details, position: geo?.p });
       toast(direct ? 'Intervention démarrée' : 'Intervention créée');
       aller('intervention/' + passage.id);
     } catch (e) { erreur(e); setAtt(false); }
@@ -145,6 +145,7 @@ export function NouvelleIntervention({ q }) {
           <div class="form">
             ${!direct && html`<${Texte} label="Jour" type="date" value=${f.jour} onInput=${set('jour')} /><${Texte} label="Heure" type="time" value=${f.heure} onInput=${set('heure')} />
               <${Texte} label="Durée (minutes)" type="number" min="15" step="15" value=${f.duree} onInput=${v => set('duree')(+v || 60)} />`}
+            ${estAdmin() && ref.profils.filter(x => x.actif !== false).length > 1 && html`<${Choix} label="Technicien" value=${f.technicien_id || moi.profil?.id} onChange=${set('technicien_id')} options=${ref.profils.filter(x => x.actif !== false).map(x => [x.id, nomTech(x.id)])} />`}
             <${TexteListe} label="Nature du passage" value=${f.nature} onInput=${set('nature')} options=${liste('nature_passage')} placeholder="Pose, contrôle, curatif…" />
             <${Texte} label="N° ordre de service" value=${f.ordre_service} onInput=${set('ordre_service')} hint="Donné par le syndic ou l'assureur" />
             <${Texte} label="N° devis Abby" value=${f.devis_abby} onInput=${set('devis_abby')} />

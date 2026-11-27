@@ -115,7 +115,11 @@ export function FormSite({ fermer, site, client }) {
       toast('Lieu enregistré'); fermer(r);
     } catch (e) { erreur(e); }
   };
-  return html`<${Modal} titre=${site ? 'Modifier le lieu' : 'Nouveau lieu d’intervention'} onClose=${() => fermer(null)} pied=${html`<button class="btn ghost" onClick=${() => fermer(null)}>Annuler</button><button class="btn pri" onClick=${go}>Enregistrer</button>`}>
+  const supprSite = async () => {
+    if (!(await confirmer(`Supprimer le lieu « ${site.nom || site.adresse} » ? Les interventions déjà faites restent dans l'historique.`, { titre: 'Supprimer le lieu', oui: 'Supprimer', danger: true }))) return;
+    try { await run(sb.from('sites').update({ supprime_le: new Date().toISOString() }).eq('id', site.id)); toast('Lieu supprimé'); fermer(true); } catch (e) { erreur(e); }
+  };
+  return html`<${Modal} titre=${site ? 'Modifier le lieu' : 'Nouveau lieu d’intervention'} onClose=${() => fermer(null)} pied=${html`${site && estAdmin() && html`<button class="btn danger" style="margin-right:auto" onClick=${supprSite}>Supprimer</button>`}<button class="btn ghost" onClick=${() => fermer(null)}>Annuler</button><button class="btn pri" onClick=${go}>Enregistrer</button>`}>
     <div class="form">
       <${Texte} label="Nom du lieu" full value=${s.nom} onInput=${set('nom')} placeholder="ex. Résidence Les Pins, bât. B" />
       <${Champ} label="Adresse *" full><input class="inp" value=${s.adresse || ''} autocomplete="off" onInput=${e => { set('adresse')(e.target.value); cherche(e.target.value); }} />

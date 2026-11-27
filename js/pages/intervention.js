@@ -161,8 +161,9 @@ function OngletInfos({ d, p, maj, recharger }) {
         <div class="kv" style="margin-bottom:14px"><div><label>Date</label><p>${p.debut_prevu ? fmtDateTime(p.debut_prevu) : 'À planifier'}</p></div>
           <div><label>Durée sur place</label><p>${p.duree_minutes != null ? fmtDuree(p.duree_minutes) : '—'}</p></div>
           ${p.confirmation_envoyee_le && html`<div><label>Confirmation</label><p>${p.confirmation_canal === 'sms' ? 'SMS' : 'E-mail'} le ${fmtDate(p.confirmation_envoyee_le)}</p></div>`}
-          ${ref.profils.length > 1 && html`<div><label>Technicien</label><p>${nomTech(p.technicien_id)}</p></div>`}</div>
+          ${ref.profils.length > 1 && !estAdmin() && html`<div><label>Technicien</label><p>${nomTech(p.technicien_id)}</p></div>`}</div>
         <div class="form">
+          ${ref.profils.length > 1 && estAdmin() && html`<${Choix} label="Technicien" value=${p.technicien_id} onChange=${v => maj({ technicien_id: v || null })} options=${ref.profils.filter(x => x.actif !== false || x.id === p.technicien_id).map(x => [x.id, nomTech(x.id)])} />`}
           <${TexteListe} label="Nature du passage" value=${p.nature} onInput=${v => maj({ nature: v || null })} options=${liste('nature_passage')} />
           <${Choix} label="Statut" vide=${false} value=${p.statut} onChange=${v => maj({ statut: v })} options=${Object.entries(STATUTS).map(([k, [l]]) => [k, l])} />
           <${Texte} label="Matériel à prévoir" full value=${p.materiel_a_prevoir} onInput=${v => maj({ materiel_a_prevoir: v || null })} />
