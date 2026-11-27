@@ -127,20 +127,53 @@ function Listes() {
       <button class="btn" style="align-self:flex-start" onClick=${ajoutNuis}>Ajouter</button></div></div>`;
 }
 
+const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const nouveauCode = () => { const r = crypto.getRandomValues(new Uint8Array(8)); const c = [...r].map(x => ALPHA[x % ALPHA.length]).join(''); return c.slice(0, 4) + '-' + c.slice(4); };
+const lienAppli = () => location.origin + location.pathname;
+
+async function partagerCode(c) {
+  const texte = `Bonjour, voici ton accès à l'appli ${moi.entreprise?.nom || 'Nuisible Express 34'}${c.espace === 'demo' ? ' (démonstration)' : ''} :\n1. Ouvre ${lienAppli()}\n2. Clique sur « Créer mon compte »\n3. Tape ton e-mail, un mot de passe et le code : ${c.code}`;
+  if (navigator.share) { try { await navigator.share({ text: texte }); return; } catch (e) { if (e.name === 'AbortError') return; } }
+  try { await navigator.clipboard.writeText(texte); toast('Message copié : colle-le dans un SMS ou un e-mail'); } catch (e) { toast(texte); }
+}
+
 function Equipe() {
-  const [d, recharger] = useCharge(async () => ({ profils: await run(sb.from('profils').select('*')), inv: await run(sb.from('invitations').select('*').order('cree_le', { ascending: false })) }));
-  const [email, setEmail] = useState('');
+  const [d, recharger] = useCharge(async () => ({
+    profils: await run(sb.from('profils').select('*')),
+    codes: await run(sb.from('codes_acces').select('*').order('cree_le', { ascending: false })),
+    inv: await run(sb.from('invitations').select('*').order('cree_le', { ascending: false })),
+  }));
+  const [f, setF] = useState({ libelle: '', espace: 'entreprise' });
   if (!d) return html`<${Chargement} />`;
-  const inviter = async () => {
-    if (!email.includes('@')) return toast('Adresse e-mail invalide.', true);
-    try { await run(sb.from('invitations').insert({ email: email.trim().toLowerCase(), role: 'technicien', invite_par: moi.profil.id })); setEmail(''); recharger(); toast('Invitation enregistrée'); } catch (e) { erreur(e); }
+  const creer = async () => {
+    if (!f.libelle.trim()) return toast('Donne un nom au code (ex. le prénom du salarié).', true);
+    try { await run(sb.from('codes_acces').insert({ libelle: f.libelle.trim(), espace: f.espace, code: nouveauCode() })); setF({ libelle: '', espace: f.espace }); recharger(); toast('Code créé'); } catch (e) { erreur(e); }
   };
+  const basculer = async c => {
+    if (c.actif && !await confirmer(`Bloquer le code « ${c.libelle} » ? Les personnes entrées avec ce code n'auront plus accès à l'appli, tout de suite.`, { titre: 'Bloquer le code', oui: 'Bloquer', danger: true })) return;
+    try { await run(sb.from('codes_acces').update({ actif: !c.actif }).eq('id', c.id)); recharger(); toast(c.actif ? 'Code bloqué' : 'Code débloqué'); } catch (e) { erreur(e); }
+  };
+  const comptes = id => d.profils.filter(p => p.code_acces_id === id);
+  const nomP = p => [p.prenom, p.nom].filter(Boolean).join(' ') || p.email;
+  const libCode = id => d.codes.find(c => c.id === id)?.libelle;
   return html`<div class="grid2e" style="margin-top:16px">
-    <div class="card"><div class="ch"><h3>Comptes</h3></div>${d.profils.map(p => html`<div class="lieu"><div><b>${[p.prenom, p.nom].filter(Boolean).join(' ') || p.email}</b><div class="small muted">${p.email} · ${p.role === 'admin' ? 'Administrateur' : 'Technicien'}${p.actif ? '' : ' · désactivé'}</div></div></div>`)}</div>
-    <div class="card stack"><h3>Inviter un salarié</h3>
-      <p class="small muted" style="margin:0">Enregistre son e-mail ici, puis donne-lui l'adresse de l'appli : il clique sur « Créer mon compte » avec ce même e-mail.</p>
-      <div class="row"><input class="inp" style="flex:1" type="email" placeholder="e-mail du salarié" value=${email} onInput=${e => setEmail(e.target.value)} /><button class="btn" onClick=${inviter}>Inviter</button></div>
-      ${d.inv.map(i => html`<div class="small">${i.email} · ${i.utilisee_le ? 'compte créé le ' + fmtDate(i.utilisee_le) : 'en attente'}</div>`)}</div></div>`;
+    <div class="card stack"><h3>Codes d'accès</h3>
+      <p class="small muted" style="margin:0">Crée un code par personne. Elle ouvre l'appli, clique sur « Créer mon compte » et tape le code. Tu peux bloquer un code à tout moment.</p>
+      <div class="form">
+        <${Texte} label="Nom du code" value=${f.libelle} onInput=${v => setF({ ...f, libelle: v })} placeholder="ex. Kevin, Démo Jean" />
+        <${Champ} label="Accès à" full><${Pastilles} multi=${false} valeurs=${f.espace} onChange=${v => v && setF({ ...f, espace: v })} options=${[['entreprise', 'Mes vrais clients (salarié)'], ['demo', 'Démo avec faux clients']]} /><//>
+      </div>
+      <button class="btn pri" style="align-self:flex-start" onClick=${creer}><${Icon} n="plus" />Créer le code</button>
+      ${d.codes.length === 0 ? html`<${Vide}>Aucun code pour l'instant.<//>` : d.codes.map(c => html`<div class="lieu" style="align-items:flex-start;gap:10px">
+        <div style="flex:1;min-width:0"><b>${c.libelle}</b> <span class=${'pill ' + (c.actif ? 'ok' : 'bad')}>${c.actif ? 'actif' : 'bloqué'}</span>
+          <div style="font-family:monospace;font-size:1.15rem;letter-spacing:.08em;margin:4px 0">${c.code}</div>
+          <div class="small muted">${c.espace === 'demo' ? 'Démo (faux clients)' : 'Vrais clients'} · ${comptes(c.id).length ? comptes(c.id).map(nomP).join(', ') : c.derniere_utilisation ? 'utilisé le ' + fmtDate(c.derniere_utilisation) : 'pas encore utilisé'}</div></div>
+        <div class="stack" style="gap:6px">
+          <button class="btn sm" onClick=${() => partagerCode(c)}>Envoyer</button>
+          <button class=${'btn sm ' + (c.actif ? 'ghost' : 'pri')} onClick=${() => basculer(c)}>${c.actif ? 'Bloquer' : 'Débloquer'}</button></div></div>`)}
+    </div>
+    <div class="card"><div class="ch"><h3>Comptes</h3></div>${d.profils.map(p => html`<div class="lieu"><div><b>${nomP(p)}</b><div class="small muted">${p.email} · ${p.role === 'admin' ? 'Administrateur' : 'Technicien'}${p.code_acces_id ? ' · code « ' + (libCode(p.code_acces_id) || '?') + ' »' : ''}${p.actif ? '' : ' · bloqué'}</div></div></div>`)}
+      ${d.inv.length > 0 && html`<h4 style="margin:14px 0 4px">Anciennes invitations par e-mail</h4>${d.inv.map(i => html`<div class="small">${i.email} · ${i.utilisee_le ? 'compte créé le ' + fmtDate(i.utilisee_le) : 'en attente'}</div>`)}`}</div></div>`;
 }
 
 function Certibiocides() {

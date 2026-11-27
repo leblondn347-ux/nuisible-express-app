@@ -6,6 +6,7 @@ export function Connexion() {
   const [mode, setMode] = useState('connexion');
   const [email, setEmail] = useState('');
   const [mdp, setMdp] = useState('');
+  const [code, setCode] = useState(new URLSearchParams(location.search).get('code') || '');
   const [msg, setMsg] = useState(null);
   const [att, setAtt] = useState(false);
 
@@ -16,7 +17,7 @@ export function Connexion() {
         const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password: mdp });
         if (error) throw error;
       } else if (mode === 'creation') {
-        const { data, error } = await sb.auth.signUp({ email: email.trim(), password: mdp, options: { emailRedirectTo: location.origin + location.pathname } });
+        const { data, error } = await sb.auth.signUp({ email: email.trim(), password: mdp, options: { emailRedirectTo: location.origin + location.pathname, data: code.trim() ? { code_acces: code.trim() } : {} } });
         if (error) throw error;
         if (!data.session) setMsg({ ok: true, t: 'Compte créé. Ouvre ta boîte mail et clique sur le lien de confirmation, puis reviens ici pour te connecter.' });
       } else {
@@ -29,13 +30,14 @@ export function Connexion() {
   };
   const titres = { connexion: 'Se connecter', creation: 'Créer mon compte', oubli: 'Mot de passe oublié' };
   return html`<div class="login"><form class="box" onSubmit=${go}>
-    <div class="brand"><b>NUISIBLE</b><span>EXPRESS 34</span><small>Gestion des interventions</small></div>
+    <div class="brand avec-logo"><img class="rond" src="icons/logo-160.png" alt="" /><div><b>NUISIBLE</b><span>EXPRESS 34</span><small>Gestion des interventions</small></div></div>
     <div class="card stack">
       <h1 class="ptitle" style="font-size:1.7rem">${titres[mode]}</h1>
-      ${mode === 'creation' && html`<div class="infobox small">Le tout premier compte créé devient <b>administrateur</b>. Les salariés pourront ensuite être invités depuis les Réglages.</div>`}
+      ${mode === 'creation' && html`<div class="infobox small">Tu as reçu un <b>code d'accès</b> ? Tape-le ci-dessous. Sans code, ton compte n'aura accès à rien tant que l'administrateur ne t'a pas ajouté.</div>`}
       <label><span class="fl">Adresse e-mail</span><input class="inp" type="email" autocomplete="email" required value=${email} onInput=${e => setEmail(e.target.value)} /></label>
       ${mode !== 'oubli' && html`<label><span class="fl">Mot de passe</span><input class="inp" type="password" minlength="6" autocomplete=${mode === 'creation' ? 'new-password' : 'current-password'} required value=${mdp} onInput=${e => setMdp(e.target.value)} />
         ${mode === 'creation' && html`<div class="hint">6 caractères minimum. Note-le bien.</div>`}</label>`}
+      ${mode === 'creation' && html`<label><span class="fl">Code d'accès</span><input class="inp" autocapitalize="characters" autocomplete="off" placeholder="ex. AB7K-2QXM" value=${code} onInput=${e => setCode(e.target.value.toUpperCase())} /></label>`}
       ${msg && html`<div class=${msg.ok ? 'okbox' : 'err'}>${msg.t}</div>`}
       <button class="btn pri block" disabled=${att}>${att ? 'Un instant…' : titres[mode]}</button>
       <div class="row between small">

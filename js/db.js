@@ -8,7 +8,8 @@ export const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 
 // ---------- Messages d'erreur en français ----------
 export function trad(e) {
-  const m = (e && (e.message || e.error_description || e.msg)) || String(e || '');
+  let m = (e && (e.message || e.error_description || e.msg)) || String(e || '');
+  if (typeof m !== 'string') m = m.message || JSON.stringify(m);
   if (/Invalid login credentials/i.test(m)) return 'E-mail ou mot de passe incorrect.';
   if (/Email not confirmed/i.test(m)) return "Ton adresse e-mail n'est pas encore confirmée : clique sur le lien reçu par e-mail.";
   if (/already registered|already exists/i.test(m)) return 'Un compte existe déjà avec cet e-mail : utilise « Se connecter ».';
