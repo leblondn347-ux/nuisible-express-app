@@ -70,3 +70,30 @@ export async function creerIntervention({ client_id, site_id, prestation_code, n
 }
 
 export const lendemain = () => [addDays(new Date(), 1), addDays(new Date(), 2)].map(d => { d.setHours(0, 0, 0, 0); return d; });
+
+// Filtre « qui » du planning (administrateur seulement) : 'tous', 'moi' ou l'id d'un technicien
+export const lireFiltreTech = () => { try { return localStorage.getItem('ne34-tech') || 'tous'; } catch (e) { return 'tous'; } };
+export const ecrireFiltreTech = v => { try { localStorage.setItem('ne34-tech', v); } catch (e) { } };
+export const filtrerTech = (l, f) => !f || f === 'tous' ? l : l.filter(p => p.technicien_id === (f === 'moi' ? moi.profil?.id : f));
+
+// Prochaines interventions (accueil)
+export async function aVenir(jours = 60) {
+  const d = new Date(); d.setHours(0, 0, 0, 0);
+  return passagesPeriode(addDays(d, 1), addDays(d, jours + 1));
+}
+
+// Rendez-vous perso de l'agenda Google (créneaux occupés, en gris dans le planning)
+const persoCache = {};
+export async function rdvPerso(debut, fin) {
+  const k = dayKey(debut) + '|' + dayKey(fin);
+  if (persoCache[k] && Date.now() - persoCache[k].t < 5 * 60e3) return persoCache[k].v;
+  try {
+    const { data, error } = await sb.functions.invoke('agenda', { body: { debut: new Date(debut).toISOString(), fin: new Date(fin).toISOString() } });
+    if (error) throw error;
+    const v = (data?.evenements || []).map(e => ({ ...e, perso: true }));
+    persoCache[k] = { t: Date.now(), v }; return v;
+  } catch (e) { return []; }
+}
+export const viderPerso = () => Object.keys(persoCache).forEach(k => delete persoCache[k]);
+// Un rendez-vous perso touche-t-il ce jour ?
+export const persoDuJour = (l, k) => (l || []).filter(e => e.jour ? (e.debut.slice(0, 10) <= k && k < e.fin.slice(0, 10)) : dayKey(e.debut) === k);

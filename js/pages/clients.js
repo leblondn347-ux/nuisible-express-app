@@ -115,7 +115,11 @@ export function FormSite({ fermer, site, client }) {
       toast('Lieu enregistré'); fermer(r);
     } catch (e) { erreur(e); }
   };
-  return html`<${Modal} titre=${site ? 'Modifier le lieu' : 'Nouveau lieu d’intervention'} onClose=${() => fermer(null)} pied=${html`<button class="btn ghost" onClick=${() => fermer(null)}>Annuler</button><button class="btn pri" onClick=${go}>Enregistrer</button>`}>
+  const supprSite = async () => {
+    if (!(await confirmer(`Supprimer le lieu « ${site.nom || site.adresse} » ? Les interventions déjà faites restent dans l'historique.`, { titre: 'Supprimer le lieu', oui: 'Supprimer', danger: true }))) return;
+    try { await run(sb.from('sites').update({ supprime_le: new Date().toISOString() }).eq('id', site.id)); toast('Lieu supprimé'); fermer(true); } catch (e) { erreur(e); }
+  };
+  return html`<${Modal} titre=${site ? 'Modifier le lieu' : 'Nouveau lieu d’intervention'} onClose=${() => fermer(null)} pied=${html`${site && estAdmin() && html`<button class="btn danger" style="margin-right:auto" onClick=${supprSite}>Supprimer</button>`}<button class="btn ghost" onClick=${() => fermer(null)}>Annuler</button><button class="btn pri" onClick=${go}>Enregistrer</button>`}>
     <div class="form">
       <${Texte} label="Nom du lieu" full value=${s.nom} onInput=${set('nom')} placeholder="ex. Résidence Les Pins, bât. B" />
       <${Champ} label="Adresse *" full><input class="inp" value=${s.adresse || ''} autocomplete="off" onInput=${e => { set('adresse')(e.target.value); cherche(e.target.value); }} />
@@ -146,7 +150,12 @@ export function FicheClient({ id }) {
   const modif = async () => { if (await ouvrir(FormClient, { client: c })) recharger(); };
   const nouveauSite = async s => { if (await ouvrir(FormSite, { site: s, client: c })) recharger(); };
   const nouveauRatt = async () => { const r = await ouvrir(FormClient, { donneur_ordre_id: c.id }); if (r) recharger(); };
-  const suppr = async () => { if (await confirmer(`Supprimer le client « ${c.nom_affiche} » ? Il disparaîtra des listes mais son historique reste en base.`, { danger: true, oui: 'Supprimer' })) { await corbeille('clients', c.id).catch(erreur); aller('clients'); } };
+  const suppr = async () => { if (await confirmer(`Supprimer le client « ${c.nom_affiche} » ? Ses interventions disparaîtront aussi du planning.`, { danger: true, oui: 'Supprimer' })) {
+    try {
+      const t = new Date().toISOString(), ids = dossiers.filter(x => x.client_id === c.id).map(x => x.id);
+      if (ids.length) { await run(sb.from('passages').update({ supprime_le: t }).in('dossier_id', ids)); await run(sb.from('dossiers').update({ supprime_le: t }).in('id', ids)); }
+      await run(sb.from('clients').update({ supprime_le: t }).eq('id', c.id)); aller('clients');
+    } catch (e) { erreur(e); } } };
   const vcard = () => telecharger(new Blob([`BEGIN:VCARD\r\nVERSION:3.0\r\nFN:${c.nom_affiche}\r\n${c.prenom || c.nom ? `N:${c.nom || ''};${c.prenom || ''};;;\r\n` : ''}${pro ? `ORG:${c.raison_sociale}\r\n` : ''}${c.telephone ? `TEL;TYPE=CELL:${c.telephone}\r\n` : ''}${c.email ? `EMAIL:${c.email}\r\n` : ''}${c.adresse ? `ADR;TYPE=WORK:;;${c.adresse};${c.ville || ''};;${c.code_postal || ''};France\r\n` : ''}NOTE:Client Nuisible Express 34\r\nEND:VCARD\r\n`], { type: 'text/vcard' }), (c.nom_affiche || 'contact') + '.vcf');
   return html`
     <div class="head"><div><div class="eyebrow">${pro ? (SOUS_TYPES[c.sous_type] || 'Professionnel') : 'Particulier'}${donneur ? html` · rattaché à <a href=${'#/client/' + donneur.id}>${donneur.nom_affiche}</a>` : ''}</div>
@@ -229,40 +238,60 @@ function ImportContacts({ fermer }) {
   const [liste, setListe] = useState(null);
   const [sel, setSel] = useState([]);
   const [att, setAtt] = useState(false);
+  const [msg, setMsg] = useState(null);
   const picker = 'contacts' in navigator && 'select' in navigator.contacts;
-  const depuisTel = async () => {
-    try {
-      const r = await navigator.contacts.select(['name', 'tel', 'email', 'address'], { multiple: true });
-      const l = r.map(x => { const n = (x.name?.[0] || '').split(' '); const a = x.address?.[0]; return { prenom: n.length > 1 ? n.slice(0, -1).join(' ') : '', nom: n.length > 1 ? n.at(-1) : n[0], telephone: x.tel?.[0], email: x.email?.[0], adresse: a?.addressLine?.join(' '), ville: a?.city, code_postal: a?.postalCode }; });
-      setListe(l); setSel(l.map((_, i) => i));
-    } catch (e) { erreur(e); }
-  };
-  const depuisFichier = async () => {
-    const [f] = await choisirFichier({ accept: '.vcf,.csv,text/vcard,text/csv' });
-    if (!f) return;
-    const t = await f.text();
-    const l = (/BEGIN:VCARD/i.test(t) ? lireVcf(t) : lireCsv(t)).filter(x => x.nom || x.raison_sociale || x.prenom);
-    setListe(l); setSel(l.map((_, i) => i));
-  };
-  const go = async () => {
+  const chiffres = t => (t || '').replace(/\D/g, '').replace(/^33/, '0').slice(-9);
+  // Enregistre les contacts comme clients, sans doublon (même téléphone ou même e-mail)
+  const importer = async (l, source) => {
     setAtt(true);
     try {
-      const rows = sel.map(i => liste[i]).map(x => ({ type: x.raison_sociale && !x.nom ? 'professionnel' : 'particulier', sous_type: x.raison_sociale && !x.nom ? 'societe' : null,
-        nom: x.nom || x.prenom || null, prenom: x.nom ? x.prenom || null : null, raison_sociale: x.raison_sociale && !x.nom ? x.raison_sociale : null,
-        telephone: x.telephone || null, email: x.email || null, adresse: x.adresse || null, ville: x.ville || null, code_postal: x.code_postal || null, source_import: picker ? 'telephone' : 'fichier', cree_par: moi.profil?.id }));
+      const ex = await run(sb.from('clients').select('telephone,email').is('supprime_le', null));
+      const tels = new Set(ex.map(c => chiffres(c.telephone)).filter(Boolean)), mails = new Set(ex.map(c => (c.email || '').toLowerCase()).filter(Boolean));
+      const nouveaux = l.filter(x => !(x.telephone && tels.has(chiffres(x.telephone))) && !(x.email && mails.has(x.email.toLowerCase())));
+      const rows = nouveaux.map(x => ({ type: x.raison_sociale && !x.nom ? 'professionnel' : 'particulier', sous_type: x.raison_sociale && !x.nom ? 'societe' : null,
+        nom: x.nom || x.prenom || x.telephone || null, prenom: x.nom ? x.prenom || null : null, raison_sociale: x.raison_sociale && !x.nom ? x.raison_sociale : null,
+        telephone: x.telephone || null, email: x.email || null, adresse: x.adresse || null, ville: x.ville || null, code_postal: x.code_postal || null, source_import: source, cree_par: moi.profil?.id }));
       for (let i = 0; i < rows.length; i += 200) {
         const cl = await run(sb.from('clients').insert(rows.slice(i, i + 200)).select('id,adresse,code_postal,ville'));
         const sites = cl.filter(x => x.adresse).map(x => ({ client_id: x.id, nom: 'Adresse principale', adresse: x.adresse, code_postal: x.code_postal, ville: x.ville, principal: true }));
         if (sites.length) await run(sb.from('sites').insert(sites));
       }
-      toast(`${rows.length} client(s) importé(s)`); fermer(rows.length);
+      const doublons = l.length - nouveaux.length;
+      toast(`${rows.length} client(s) enregistré(s)${doublons ? ` · ${doublons} déjà présent(s)` : ''}`); fermer(rows.length || 1);
     } catch (e) { erreur(e); setAtt(false); }
   };
+  const depuisTel = async () => {
+    setMsg(null);
+    try {
+      const dispo = navigator.contacts.getProperties ? await navigator.contacts.getProperties() : ['name', 'tel', 'email'];
+      const r = await navigator.contacts.select(['name', 'tel', 'email', 'address'].filter(x => dispo.includes(x)), { multiple: true });
+      if (!r || !r.length) return setMsg("Aucun contact choisi. Dans la liste qui s'ouvre, touche chaque contact à importer (une coche apparaît), puis touche « Sélectionner » ou « OK » en haut de l'écran.");
+      const l = r.map(x => {
+        const n = (x.name?.[0] || '').trim().split(/\s+/).filter(Boolean); const a = x.address?.[0];
+        return { prenom: n.length > 1 ? n.slice(0, -1).join(' ') : '', nom: n.length > 1 ? n.at(-1) : n[0] || '', telephone: x.tel?.[0] || '', email: x.email?.[0] || '',
+          adresse: a ? (a.addressLine || []).join(' ') : '', ville: a?.city || '', code_postal: a?.postalCode || '' };
+      }).filter(x => x.nom || x.prenom || x.telephone);
+      await importer(l, 'telephone');
+    } catch (e) { setMsg("Le téléphone n'a pas donné accès aux contacts (" + (e.message || e) + "). Utilise plutôt l'import par fichier ci-dessous."); }
+  };
+  const depuisFichier = async () => {
+    setMsg(null);
+    const [f] = await choisirFichier({ accept: '.vcf,.csv,text/vcard,text/x-vcard,text/csv' });
+    if (!f) return;
+    const t = (await f.text()).replace(/^\ufeff/, '');
+    const l = (/BEGIN:VCARD/i.test(t) ? lireVcf(t) : lireCsv(t)).filter(x => x.nom || x.raison_sociale || x.prenom || x.telephone);
+    if (!l.length) return setMsg("Aucun contact lu dans ce fichier. Choisis un export « CSV Google » ou un fichier .vcf.");
+    setListe(l); setSel(l.map((_, i) => i));
+  };
+  const go = () => importer(sel.map(i => liste[i]), 'fichier');
   return html`<${Modal} titre="Importer des contacts" onClose=${() => fermer(0)} large pied=${liste && html`<button class="btn ghost" onClick=${() => fermer(0)}>Annuler</button><button class="btn pri" disabled=${!sel.length || att} onClick=${go}>Importer ${sel.length} contact(s)</button>`}>
     ${!liste ? html`<div class="stack">
-      ${picker && html`<button class="btn pri" onClick=${depuisTel}><${Icon} n="phone" />Choisir dans les contacts du téléphone</button>`}
+      ${msg && html`<div class="err">${msg}</div>`}
+      ${att && html`<${Chargement} />`}
+      ${picker && html`<button class="btn pri" disabled=${att} onClick=${depuisTel}><${Icon} n="phone" />Choisir dans les contacts du téléphone</button>
+        <p class="small muted" style="margin:0">Coche les contacts dans la liste du téléphone puis valide : ils sont enregistrés tout de suite comme clients (nom, téléphone, e-mail, adresse). Les contacts déjà présents sont ignorés.</p>`}
       <button class="btn ghost" onClick=${depuisFichier}><${Icon} n="up" />Choisir un fichier (Google Contacts .csv ou .vcf)</button>
-      <div class="infobox small"><b>Depuis Google Contacts sur l'ordinateur :</b> ouvre <a href="https://contacts.google.com" target="_blank">contacts.google.com</a>, coche les contacts, puis <b>Exporter</b> → « CSV Google » et choisis le fichier ici.</div></div>`
+      <div class="infobox small"><b>Pour importer tout le carnet d'un coup :</b> ouvre <a href="https://contacts.google.com" target="_blank">contacts.google.com</a>, coche les contacts (ou tous), puis ⋮ › <b>Exporter</b> › « CSV Google ». Choisis ensuite ce fichier ici.</div></div>`
     : html`<div class="row between"><b>${liste.length} contact(s) trouvé(s)</b><button class="link" onClick=${() => setSel(sel.length === liste.length ? [] : liste.map((_, i) => i))}>${sel.length === liste.length ? 'Tout décocher' : 'Tout cocher'}</button></div>
       <div style="max-height:50vh;overflow:auto">${liste.map((x, i) => html`<label class="check" style="margin-bottom:6px"><input type="checkbox" checked=${sel.includes(i)} onChange=${() => setSel(sel.includes(i) ? sel.filter(y => y !== i) : [...sel, i])} />
         <div><b>${[x.nom, x.prenom].filter(Boolean).join(' ') || x.raison_sociale}</b><div class="small muted">${[x.telephone, x.email, x.ville].filter(Boolean).join(' · ')}</div></div></label>`)}</div>`}

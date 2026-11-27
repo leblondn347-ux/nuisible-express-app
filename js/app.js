@@ -12,13 +12,14 @@ import { Produits } from './pages/produits.js';
 import { Rapports, Documents } from './pages/documents.js';
 import { Contrats, FicheContrat } from './pages/contrats.js';
 import { Reglages, Registre } from './pages/reglages.js';
+import { ImportAgenda } from './pages/import-agenda.js';
 
 const ROUTES = {
   accueil: Accueil, planning: Planning, clients: Clients, client: FicheClient, nouvelle: NouvelleIntervention,
   intervention: Intervention, produits: Produits, rapports: Rapports, documents: Documents,
-  contrats: Contrats, contrat: FicheContrat, reglages: Reglages, registre: Registre,
+  contrats: Contrats, contrat: FicheContrat, reglages: Reglages, registre: Registre, 'import-agenda': ImportAgenda,
 };
-const PARENT = { client: 'clients', intervention: 'planning', nouvelle: 'planning', contrat: 'contrats', registre: 'reglages' };
+const PARENT = { client: 'clients', intervention: 'planning', nouvelle: 'planning', contrat: 'contrats', registre: 'reglages', 'import-agenda': 'reglages' };
 const NAV = [['accueil', 'home', 'Accueil'], ['planning', 'cal', 'Planning'], ['clients', 'users', 'Clients'], ['contrats', 'contract', 'Contrats'],
   ['produits', 'flask', 'Produits AMM'], ['rapports', 'doc', 'Rapports'], ['documents', 'clip', 'Documents'], ['reglages', 'gear', 'Réglages']];
 

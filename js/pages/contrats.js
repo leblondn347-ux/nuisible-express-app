@@ -1,6 +1,6 @@
 // Contrats à l'année : création des passages, nombre de passages modifiable, renouvellement
 import { html, useState, useEffect, Icon, Titre, Statut, Chargement, Vide, useCharge, ouvrir, Texte, Choix, Champ, Pastilles, Bascule, erreur, toast, aller, confirmer, useRefData } from '../ui.js';
-import { sb, run, moi, ref, prestation, lire } from '../db.js';
+import { sb, run, moi, ref, prestation, lire, estAdmin } from '../db.js';
 import { adresseDe } from '../data.js';
 import { ChoixNuisibles } from './nouvelle.js';
 import { FenetrePlanifier } from './planning.js';
@@ -80,6 +80,16 @@ export function FicheContrat({ id, q }) {
     } catch (e) { erreur(e); }
     setAtt(false);
   };
+  const supprimerContrat = async () => {
+    if (!(await confirmer('Supprimer ce contrat ? Ses passages pas encore faits disparaîtront du planning. Les passages déjà faits et leurs rapports sont gardés.', { titre: 'Supprimer le contrat', oui: 'Supprimer', danger: true }))) return;
+    try {
+      const t = new Date().toISOString();
+      const ds = await run(sb.from('dossiers').select('id').eq('contrat_id', id));
+      if (ds.length) await run(sb.from('passages').update({ supprime_le: t }).in('dossier_id', ds.map(x => x.id)).in('statut', ['a_planifier', 'planifie', 'a_repasser']));
+      await run(sb.from('contrats').update({ supprime_le: t, statut: 'resilie' }).eq('id', id));
+      toast('Contrat supprimé'); aller('contrats');
+    } catch (e) { erreur(e); }
+  };
   const renouveler = async () => {
     if (!(await confirmer(`Créer le contrat de l'année suivante (à partir du ${fmtDate(addDays(c.date_fin, 1))}) avec les mêmes réglages ?`, { oui: 'Renouveler' }))) return;
     try {
@@ -120,7 +130,8 @@ export function FicheContrat({ id, q }) {
           <${Bascule} on=${c.reconduction_tacite} onChange=${set('reconduction_tacite')} label="Reconduction tacite" /></div>
         <div class="row"><button class="btn pri" disabled=${att} onClick=${go}><${Icon} n="check" />${nouveau ? 'Créer le contrat et ses passages' : 'Enregistrer'}</button>
           ${!nouveau && html`<button class="btn ghost" onClick=${renouveler}><${Icon} n="refresh" />Renouveler pour un an</button>`}
-          ${!nouveau && c.client_id && html`<a class="btn ghost" href=${'#/client/' + c.client_id}>Fiche client</a>`}</div>
+          ${!nouveau && c.client_id && html`<a class="btn ghost" href=${'#/client/' + c.client_id}>Fiche client</a>`}
+          ${!nouveau && estAdmin() && html`<button class="btn danger" onClick=${supprimerContrat}><${Icon} n="trash" />Supprimer</button>`}</div>
       </div>
       ${!nouveau && html`<div class="card"><div class="ch"><h3>Passages du contrat</h3><span class="pill">${d.passages.length}</span></div>
         ${d.passages.length === 0 ? html`<${Vide}>Les passages seront créés à l'enregistrement.<//>` : html`<div class="steps">${d.passages.map((p, i) => html`<div class=${cls('step', ['fait', 'rapport_envoye', 'facture'].includes(p.statut) ? 'done' : p.statut === 'planifie' ? 'now' : '')}>

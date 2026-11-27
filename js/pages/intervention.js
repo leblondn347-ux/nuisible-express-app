@@ -112,6 +112,19 @@ function OngletInfos({ d, p, maj, recharger }) {
       aller('intervention/' + n.id);
     } catch (e) { erreur(e); }
   };
+  const annulerPassage = async () => {
+    if (!await confirmer('Annuler ce rendez-vous ? Il reste visible dans le dossier avec le statut « Annulé ».', { titre: 'Annuler le passage', oui: 'Annuler le passage', danger: true })) return;
+    try { await run(sb.from('passages').update({ statut: 'annule' }).eq('id', p.id)); toast('Passage annulé'); recharger(); } catch (e) { erreur(e); }
+  };
+  const supprimerDossier = async () => {
+    if (!await confirmer(`Supprimer toute l'intervention (dossier ${dossier.reference}, ${autres.length} passage(s)) ? Elle disparaîtra du planning et des listes.`, { titre: "Supprimer l'intervention", oui: 'Supprimer', danger: true })) return;
+    try {
+      const t = new Date().toISOString();
+      await run(sb.from('passages').update({ supprime_le: t }).eq('dossier_id', dossier.id));
+      await run(sb.from('dossiers').update({ supprime_le: t }).eq('id', dossier.id));
+      toast('Intervention supprimée'); aller('planning');
+    } catch (e) { erreur(e); }
+  };
   const gcal = () => {
     if (!p.debut_prevu) return toast("Planifie d'abord le rendez-vous.", true);
     const f = x => new Date(x).toISOString().replace(/[-:]|\.\d{3}/g, '');
@@ -148,8 +161,9 @@ function OngletInfos({ d, p, maj, recharger }) {
         <div class="kv" style="margin-bottom:14px"><div><label>Date</label><p>${p.debut_prevu ? fmtDateTime(p.debut_prevu) : 'À planifier'}</p></div>
           <div><label>Durée sur place</label><p>${p.duree_minutes != null ? fmtDuree(p.duree_minutes) : '—'}</p></div>
           ${p.confirmation_envoyee_le && html`<div><label>Confirmation</label><p>${p.confirmation_canal === 'sms' ? 'SMS' : 'E-mail'} le ${fmtDate(p.confirmation_envoyee_le)}</p></div>`}
-          ${ref.profils.length > 1 && html`<div><label>Technicien</label><p>${nomTech(p.technicien_id)}</p></div>`}</div>
+          ${ref.profils.length > 1 && !estAdmin() && html`<div><label>Technicien</label><p>${nomTech(p.technicien_id)}</p></div>`}</div>
         <div class="form">
+          ${ref.profils.length > 1 && estAdmin() && html`<${Choix} label="Technicien" value=${p.technicien_id} onChange=${v => maj({ technicien_id: v || null })} options=${ref.profils.filter(x => x.actif !== false || x.id === p.technicien_id).map(x => [x.id, nomTech(x.id)])} />`}
           <${TexteListe} label="Nature du passage" value=${p.nature} onInput=${v => maj({ nature: v || null })} options=${liste('nature_passage')} />
           <${Choix} label="Statut" vide=${false} value=${p.statut} onChange=${v => maj({ statut: v })} options=${Object.entries(STATUTS).map(([k, [l]]) => [k, l])} />
           <${Texte} label="Matériel à prévoir" full value=${p.materiel_a_prevoir} onInput=${v => maj({ materiel_a_prevoir: v || null })} />
@@ -159,6 +173,9 @@ function OngletInfos({ d, p, maj, recharger }) {
       <div class="card"><div class="ch"><h3>Suivi du dossier</h3><button class="link" onClick=${ajouterPassage}>+ Ajouter un passage</button></div>
         <div class="steps">${autres.map(x => html`<a class=${cls('step', ['fait', 'rapport_envoye', 'facture'].includes(x.statut) ? 'done' : x.id === p.id ? 'now' : '')} href=${'#/intervention/' + x.id} style=${x.id === p.id ? 'font-weight:700' : ''}>
           <i>${x.numero}</i><div><b class="small">${x.nature || 'Passage ' + x.numero}</b><div class="small muted">${x.depart_le || x.debut_prevu ? fmtDate(x.depart_le || x.debut_prevu) : x.date_cible ? 'vers le ' + fmtDate(x.date_cible) : 'à planifier'}</div></div><${Statut} s=${x.statut} /></a>`)}</div></div>
+      <div class="row" style="flex-wrap:wrap;gap:8px">
+        ${!['annule', 'rapport_envoye', 'facture'].includes(p.statut) && html`<button class="btn sm ghost" onClick=${annulerPassage}>Annuler ce passage</button>`}
+        ${estAdmin() && html`<button class="btn sm danger" onClick=${supprimerDossier}><${Icon} n="trash" />Supprimer l'intervention</button>`}</div>
     </div></div>`;
 }
 
