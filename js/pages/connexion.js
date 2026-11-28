@@ -35,8 +35,8 @@ export function Connexion() {
       <h1 class="ptitle" style="font-size:1.7rem">${titres[mode]}</h1>
       ${mode === 'creation' && html`<div class="infobox small">Tu as reçu un <b>code d'accès</b> ? Tape-le ci-dessous. Sans code, ton compte n'aura accès à rien tant que l'administrateur ne t'a pas ajouté.</div>`}
       <label><span class="fl">Adresse e-mail</span><input class="inp" type="email" autocomplete="email" required value=${email} onInput=${e => setEmail(e.target.value)} /></label>
-      ${mode !== 'oubli' && html`<label><span class="fl">Mot de passe</span><input class="inp" type="password" minlength="6" autocomplete=${mode === 'creation' ? 'new-password' : 'current-password'} required value=${mdp} onInput=${e => setMdp(e.target.value)} />
-        ${mode === 'creation' && html`<div class="hint">6 caractères minimum. Note-le bien.</div>`}</label>`}
+      ${mode !== 'oubli' && html`<label><span class="fl">Mot de passe</span><input class="inp" type="password" minlength=${mode === 'creation' ? 8 : 1} autocomplete=${mode === 'creation' ? 'new-password' : 'current-password'} required value=${mdp} onInput=${e => setMdp(e.target.value)} />
+        ${mode === 'creation' && html`<div class="hint">8 caractères minimum. Note-le bien.</div>`}</label>`}
       ${mode === 'creation' && html`<label><span class="fl">Code d'accès</span><input class="inp" autocapitalize="characters" autocomplete="off" placeholder="ex. AB7K-2QXM" value=${code} onInput=${e => setCode(e.target.value.toUpperCase())} /></label>`}
       ${msg && html`<div class=${msg.ok ? 'okbox' : 'err'}>${msg.t}</div>`}
       <button class="btn pri block" disabled=${att}>${att ? 'Un instant…' : titres[mode]}</button>
@@ -59,7 +59,7 @@ export function NouveauMotDePasse({ fini }) {
   };
   return html`<div class="login"><form class="box card stack" onSubmit=${go}>
     <h1 class="ptitle" style="font-size:1.6rem">Nouveau <em>mot de passe</em></h1>
-    <input class="inp" type="password" minlength="6" required value=${mdp} onInput=${e => setMdp(e.target.value)} autocomplete="new-password" />
+    <input class="inp" type="password" minlength="8" required value=${mdp} onInput=${e => setMdp(e.target.value)} autocomplete="new-password" />
     ${msg && html`<div class="err">${msg}</div>`}
     <button class="btn pri">Enregistrer</button></form></div>`;
 }
